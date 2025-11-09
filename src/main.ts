@@ -57,9 +57,6 @@ jetstream.on('close', () => {
 
 jetstream.on('error', (error) => {
   logger.error(`Jetstream error: ${error.message}`);
-  if (error instanceof Error) {
-    logger.error(`Jetstream error stack: ${error.stack}`);
-  }
 });
 
 jetstream.onCreate(WANTED_COLLECTION, (event: CommitCreateEvent<typeof WANTED_COLLECTION>) => {
@@ -71,37 +68,25 @@ jetstream.onCreate(WANTED_COLLECTION, (event: CommitCreateEvent<typeof WANTED_CO
 
 const metricsServer = startMetricsServer(METRICS_PORT);
 
-// Log ALL incoming requests
-labelerServer.app.addHook('onRequest', (request, reply, done) => {
-  logger.info(`Incoming request: ${request.method} ${request.url} from ${request.ip}`);
-  done();
-});
-
-// Log WebSocket upgrade attempts
-labelerServer.app.server.on('upgrade', (request, socket, head) => {
-  logger.info(`WebSocket upgrade: ${request.url} from ${request.socket.remoteAddress}`);
-});
-
 logger.info(`Attempting to start labeler server on ${HOST}:${PORT}...`);
 
-try {
-  labelerServer.app.listen({ port: PORT, host: HOST }, (error, address) => {
-    if (error) {
-      logger.error('Error starting server: %s', error);
-      logger.error(`Error details: ${JSON.stringify(error)}`);
-    } else {
-      logger.info(`Labeler server listening on ${address}`);
-      logger.info(`Server accepting HTTP on port ${PORT}`);
-      logger.info(`WebSocket endpoint: wss://${HOST}:${PORT}/xrpc/com.atproto.label.subscribeLabels`);
+labelerServer.app
+  .listen({ port: PORT, host: HOST })
+  .then((address) => {
+    logger.info(`Labeler server listening on ${address}`);
+    logger.info(`Server accepting HTTP on port ${PORT}`);
+    logger.info(`WebSocket endpoint: wss://${HOST}:${PORT}/xrpc/com.atproto.label.subscribeLabels`);
+  })
+  .catch((error) => {
+    logger.error('Error starting server: %s', error);
+    logger.error(`Error details: ${JSON.stringify(error)}`);
+    if (error instanceof Error) {
+      logger.error(`Stack: ${error.stack}`);
     }
+    process.exit(1);
   });
-  logger.info('Listen call completed');
-} catch (error) {
-  logger.error(`Exception starting server: ${error}`);
-  if (error instanceof Error) {
-    logger.error(`Stack: ${error.stack}`);
-  }
-}
+
+jetstream.start();
 
 jetstream.start();
 
