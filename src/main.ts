@@ -82,16 +82,26 @@ labelerServer.app.server.on('upgrade', (request, socket, head) => {
   logger.info(`WebSocket upgrade: ${request.url} from ${request.socket.remoteAddress}`);
 });
 
-labelerServer.app.listen({ port: PORT, host: HOST }, (error, address) => {
-  if (error) {
-    logger.error('Error starting server: %s', error);
-    logger.error(`Error details: ${JSON.stringify(error)}`);
-  } else {
-    logger.info(`Labeler server listening on ${address}`);
-    logger.info(`Server accepting HTTP on port ${PORT}`);
-    logger.info(`WebSocket endpoint: wss://${HOST}:${PORT}/xrpc/com.atproto.label.subscribeLabels`);
+logger.info(`Attempting to start labeler server on ${HOST}:${PORT}...`);
+
+try {
+  labelerServer.app.listen({ port: PORT, host: HOST }, (error, address) => {
+    if (error) {
+      logger.error('Error starting server: %s', error);
+      logger.error(`Error details: ${JSON.stringify(error)}`);
+    } else {
+      logger.info(`Labeler server listening on ${address}`);
+      logger.info(`Server accepting HTTP on port ${PORT}`);
+      logger.info(`WebSocket endpoint: wss://${HOST}:${PORT}/xrpc/com.atproto.label.subscribeLabels`);
+    }
+  });
+  logger.info('Listen call completed');
+} catch (error) {
+  logger.error(`Exception starting server: ${error}`);
+  if (error instanceof Error) {
+    logger.error(`Stack: ${error.stack}`);
   }
-});
+}
 
 jetstream.start();
 
