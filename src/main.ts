@@ -1,8 +1,19 @@
 import { CommitCreateEvent, Jetstream } from '@skyware/jetstream';
 import fs from 'node:fs';
+import path from 'node:path';
 import WebSocket from 'ws';
 
-import { CURSOR_UPDATE_INTERVAL, DID, FIREHOSE_URL, HOST, METRICS_PORT, PORT, WANTED_COLLECTION } from './config.js';
+import {
+  CURSOR_FILE,
+  CURSOR_UPDATE_INTERVAL,
+  DATA_DIR,
+  DID,
+  FIREHOSE_URL,
+  HOST,
+  METRICS_PORT,
+  PORT,
+  WANTED_COLLECTION,
+} from './config.js';
 import { label, labelerServer } from './label.js';
 import logger from './logger.js';
 import { startMetricsServer } from './metrics.js';
@@ -14,15 +25,21 @@ function epochUsToDateTime(cursor: number): string {
   return new Date(cursor / 1000).toISOString();
 }
 
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  logger.info(`Created data directory: ${DATA_DIR}`);
+}
+
 try {
-  logger.info('Trying to read cursor from cursor.txt...');
-  cursor = Number(fs.readFileSync('cursor.txt', 'utf8'));
+  logger.info(`Trying to read cursor from ${CURSOR_FILE}...`);
+  cursor = Number(fs.readFileSync(CURSOR_FILE, 'utf8'));
   logger.info(`Cursor found: ${cursor} (${epochUsToDateTime(cursor)})`);
 } catch (error) {
   if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
     cursor = Math.floor(Date.now() * 1000);
-    logger.info(`Cursor not found in cursor.txt, setting cursor to: ${cursor} (${epochUsToDateTime(cursor)})`);
-    fs.writeFileSync('cursor.txt', cursor.toString(), 'utf8');
+    logger.info(`Cursor not found in ${CURSOR_FILE}, setting cursor to: ${cursor} (${epochUsToDateTime(cursor)})`);
+    fs.writeFileSync(CURSOR_FILE, cursor.toString(), 'utf8');
   } else {
     logger.error(error);
     process.exit(1);
@@ -43,7 +60,7 @@ jetstream.on('open', () => {
   cursorUpdateInterval = setInterval(() => {
     if (jetstream.cursor) {
       logger.info(`Cursor updated to: ${jetstream.cursor} (${epochUsToDateTime(jetstream.cursor)})`);
-      fs.writeFile('cursor.txt', jetstream.cursor.toString(), (err) => {
+      fs.writeFile(CURSOR_FILE, jetstream.cursor.toString(), (err) => {
         if (err) logger.error(err);
       });
     }
@@ -57,6 +74,9 @@ jetstream.on('close', () => {
 
 jetstream.on('error', (error) => {
   logger.error(`Jetstream error: ${error.message}`);
+  if (error instanceof Error) {
+    logger.error(`Jetstream error stack: ${error.stack}`);
+  }
 });
 
 jetstream.onCreate(WANTED_COLLECTION, (event: CommitCreateEvent<typeof WANTED_COLLECTION>) => {
@@ -68,11 +88,25 @@ jetstream.onCreate(WANTED_COLLECTION, (event: CommitCreateEvent<typeof WANTED_CO
 
 const metricsServer = startMetricsServer(METRICS_PORT);
 
+// Log ALL incoming requests
+labelerServer.app.addHook('onRequest', (request, reply, done) => {
+  logger.info(`Incoming request: ${request.method} ${request.url} from ${request.ip}`);
+  done();
+});
+
+// Log WebSocket upgrade attempts
+labelerServer.app.server.on('upgrade', (request, socket, head) => {
+  logger.info(`WebSocket upgrade: ${request.url} from ${request.socket.remoteAddress}`);
+});
+
 labelerServer.app.listen({ port: PORT, host: HOST }, (error, address) => {
   if (error) {
     logger.error('Error starting server: %s', error);
+    logger.error(`Error details: ${JSON.stringify(error)}`);
   } else {
     logger.info(`Labeler server listening on ${address}`);
+    logger.info(`Server accepting HTTP on port ${PORT}`);
+    logger.info(`WebSocket endpoint: wss://${HOST}:${PORT}/xrpc/com.atproto.label.subscribeLabels`);
   }
 });
 
@@ -81,7 +115,7 @@ jetstream.start();
 function shutdown() {
   try {
     logger.info('Shutting down gracefully...');
-    fs.writeFileSync('cursor.txt', jetstream.cursor!.toString(), 'utf8');
+    fs.writeFileSync(CURSOR_FILE, jetstream.cursor!.toString(), 'utf8');
     jetstream.close();
     labelerServer.stop();
     metricsServer.close();

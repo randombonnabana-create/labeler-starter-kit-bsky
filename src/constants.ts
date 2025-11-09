@@ -1,7 +1,7 @@
 import { Label } from './types.js';
 
 export const DELETE = '3m56s6azcxd2r';
-export const LABEL_LIMIT = 4;
+export const LABEL_LIMIT = 10;
 export const LABELS: Label[] = [
   {
     rkey: '3m56s5pextx25',

@@ -1,11 +1,15 @@
 import { ComAtprotoLabelDefs } from '@atcute/client/lexicons';
 import { LabelerServer } from '@skyware/labeler';
 
-import { DID, SIGNING_KEY } from './config.js';
+import { DATABASE_FILE, DID, SIGNING_KEY } from './config.js';
 import { DELETE, LABELS, LABEL_LIMIT } from './constants.js';
 import logger from './logger.js';
 
-export const labelerServer = new LabelerServer({ did: DID, signingKey: SIGNING_KEY });
+export const labelerServer = new LabelerServer({
+  did: DID,
+  signingKey: SIGNING_KEY,
+  dbPath: DATABASE_FILE,
+});
 
 export const label = (did: string, rkey: string) => {
   logger.info(`Received rkey: ${rkey} for ${did}`);
@@ -53,10 +57,14 @@ function deleteAllLabels(did: string, labels: Set<string>) {
   } else {
     logger.info(`Labels to delete: ${labelsToDelete.join(', ')}`);
     try {
-      labelerServer.createLabels({ uri: did }, { negate: labelsToDelete });
+      const results = labelerServer.createLabels({ uri: did }, { negate: labelsToDelete });
       logger.info('Successfully deleted all labels');
+      logger.info(`Deletion results: ${JSON.stringify(results)}`);
     } catch (error) {
       logger.error(`Error deleting all labels: ${error}`);
+      if (error instanceof Error) {
+        logger.error(`Error stack: ${error.stack}`);
+      }
     }
   }
 }
@@ -71,17 +79,25 @@ function addOrUpdateLabel(did: string, rkey: string, labels: Set<string>) {
 
   if (labels.size >= LABEL_LIMIT) {
     try {
-      labelerServer.createLabels({ uri: did }, { negate: Array.from(labels) });
+      const results = labelerServer.createLabels({ uri: did }, { negate: Array.from(labels) });
       logger.info(`Successfully negated existing labels: ${Array.from(labels).join(', ')}`);
+      logger.info(`Negation results: ${JSON.stringify(results)}`);
     } catch (error) {
       logger.error(`Error negating existing labels: ${error}`);
+      if (error instanceof Error) {
+        logger.error(`Error stack: ${error.stack}`);
+      }
     }
   }
 
   try {
-    labelerServer.createLabel({ uri: did, val: newLabel.identifier });
+    const result = labelerServer.createLabel({ uri: did, val: newLabel.identifier });
     logger.info(`Successfully labeled ${did} with ${newLabel.identifier}`);
+    logger.info(`Label details: ${JSON.stringify(result)}`);
   } catch (error) {
     logger.error(`Error adding new label: ${error}`);
+    if (error instanceof Error) {
+      logger.error(`Error stack: ${error.stack}`);
+    }
   }
 }
