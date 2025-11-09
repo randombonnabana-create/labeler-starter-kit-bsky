@@ -1,19 +1,8 @@
 import { CommitCreateEvent, Jetstream } from '@skyware/jetstream';
 import fs from 'node:fs';
-import path from 'node:path';
 import WebSocket from 'ws';
 
-import {
-  CURSOR_FILE,
-  CURSOR_UPDATE_INTERVAL,
-  DATA_DIR,
-  DID,
-  FIREHOSE_URL,
-  HOST,
-  METRICS_PORT,
-  PORT,
-  WANTED_COLLECTION,
-} from './config.js';
+import { CURSOR_UPDATE_INTERVAL, DID, FIREHOSE_URL, HOST, METRICS_PORT, PORT, WANTED_COLLECTION } from './config.js';
 import { label, labelerServer } from './label.js';
 import logger from './logger.js';
 import { startMetricsServer } from './metrics.js';
@@ -25,21 +14,15 @@ function epochUsToDateTime(cursor: number): string {
   return new Date(cursor / 1000).toISOString();
 }
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  logger.info(`Created data directory: ${DATA_DIR}`);
-}
-
 try {
-  logger.info(`Trying to read cursor from ${CURSOR_FILE}...`);
-  cursor = Number(fs.readFileSync(CURSOR_FILE, 'utf8'));
+  logger.info('Trying to read cursor from cursor.txt...');
+  cursor = Number(fs.readFileSync('cursor.txt', 'utf8'));
   logger.info(`Cursor found: ${cursor} (${epochUsToDateTime(cursor)})`);
 } catch (error) {
   if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
     cursor = Math.floor(Date.now() * 1000);
-    logger.info(`Cursor not found in ${CURSOR_FILE}, setting cursor to: ${cursor} (${epochUsToDateTime(cursor)})`);
-    fs.writeFileSync(CURSOR_FILE, cursor.toString(), 'utf8');
+    logger.info(`Cursor not found in cursor.txt, setting cursor to: ${cursor} (${epochUsToDateTime(cursor)})`);
+    fs.writeFileSync('cursor.txt', cursor.toString(), 'utf8');
   } else {
     logger.error(error);
     process.exit(1);
@@ -60,7 +43,7 @@ jetstream.on('open', () => {
   cursorUpdateInterval = setInterval(() => {
     if (jetstream.cursor) {
       logger.info(`Cursor updated to: ${jetstream.cursor} (${epochUsToDateTime(jetstream.cursor)})`);
-      fs.writeFile(CURSOR_FILE, jetstream.cursor.toString(), (err) => {
+      fs.writeFile('cursor.txt', jetstream.cursor.toString(), (err) => {
         if (err) logger.error(err);
       });
     }
@@ -115,7 +98,7 @@ jetstream.start();
 function shutdown() {
   try {
     logger.info('Shutting down gracefully...');
-    fs.writeFileSync(CURSOR_FILE, jetstream.cursor!.toString(), 'utf8');
+    fs.writeFileSync('cursor.txt', jetstream.cursor!.toString(), 'utf8');
     jetstream.close();
     labelerServer.stop();
     metricsServer.close();
