@@ -1,5 +1,6 @@
 import { CommitCreateEvent, Jetstream } from '@skyware/jetstream';
 import fs from 'node:fs';
+import WebSocket from 'ws';
 
 import { CURSOR_UPDATE_INTERVAL, DID, FIREHOSE_URL, HOST, METRICS_PORT, PORT, WANTED_COLLECTION } from './config.js';
 import { label, labelerServer } from './label.js';
@@ -29,6 +30,7 @@ try {
 }
 
 const jetstream = new Jetstream({
+  ws: WebSocket,
   wantedCollections: [WANTED_COLLECTION],
   endpoint: FIREHOSE_URL,
   cursor: cursor,
